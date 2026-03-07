@@ -1,7 +1,7 @@
 const express = require("express");
 const { body, param, validationResult } = require("express-validator");
 const pool = require("../../db/pool");
-const { generateSecret } = require("../../services/logger");
+const { generateSecret } = require("../../services/signature");
 const { route, routes } = require("../../app");
 const logger = require("../../services/logger");
 const { error } = require("console");
@@ -39,6 +39,7 @@ router.post(
 
     const secret = generateSecret();
     const client = await pool.connect();
+    console.log(name,url,event_types,description,secret)
     try {
       await client.query("BEGIN");
       //Insert the endpoints
@@ -46,7 +47,7 @@ router.post(
         `INSERT INTO endpoints (name, url, secret, event_types, description)
                 VALUES ($1, $2, $3, $4, $5)
                 RETURNING *`,
-        [name.url, secret, event_types, description || null],
+        [name, url, secret, event_types, description || null],
       );
       const endpoint = result.rows[0];
 
@@ -69,7 +70,7 @@ router.post(
       });
     } catch (error) {
       await client.query("ROLLBACK");
-      logger.error("Failed to create endpoint", { error: err.message });
+      logger.error("Failed to create endpoint", { error: error.message });
       res.status(500).json({ error: "Failed to register endpoints" });
     } finally {
       client.release();
@@ -98,7 +99,7 @@ router.get("/", async (req, res) => {
     );
     res.json({ endpoint: result.rows });
   } catch (error) {
-    logger.error("Failed to list endpoints", { error: err.message });
+    logger.error("Failed to list endpoints", { error: error.message });
     res.status(500).json({ error: "Failed to fetch endpoints" });
   }
 });
@@ -108,7 +109,7 @@ router.get("/", async (req, res) => {
 
 router.get(
   "/:id",
-  param("id").isUUID().withMessage("Invalid endpoin ID"),
+  param("id").isUUID().withMessage("Invalid endpoint ID"),
   validate,
   async (req, res) => {
     try {
@@ -120,7 +121,7 @@ router.get(
             eh.total_deliveries,
             eh.successful_deliveries,
             eh.failed_deliveries,
-            eh.last_delivery_at,
+            eh.last_delivery_at
          FROM endpoints e
          LEFT JOIN endpoint_health eh ON e.id = eh.endpoint_id
          WHERE e.id = $1
@@ -132,7 +133,7 @@ router.get(
         return res.status(404).json({ error: "Endpoint not found" });
       }
 
-      res.join({ endpoint: result.rows[0] });
+      res.json({ endpoint: result.rows[0] });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch endpoint" });
     }
@@ -194,8 +195,7 @@ router.patch(
         `UPDATE endpoints
             SET ${updates.join(", ")}
             WHERE id = $${i}
-            RETURNING *,
-            `,
+            RETURNING *`,
         values,
       );
 
@@ -224,9 +224,9 @@ router.delete(
         [req.params.id],
       );
       if (!result.rows.length) {
-        return res.status(404).json({ error: "ENDPOINT NOT FOUND" });
+        return res.status(404).json({ error: "Endpoint not found" });
       }
-      res.json({ message: "ENDPOINT deleted ", id: req.params.id });
+      res.json({ message: "Endpoint deleted", id: req.params.id });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete the endpoint" });
     }
@@ -245,7 +245,7 @@ router.get(
     const offset = (page - 1) * limit;
 
     try {
-      let whereClause = "WHERE d.enpoint_id = $1";
+      let whereClause = "WHERE d.endpoint_id = $1";
       const params = [req.params.id];
 
       if (status) {
