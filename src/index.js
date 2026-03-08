@@ -1,8 +1,12 @@
-require('dotenv').config()
-const app = require('./app')
+require("dotenv").config();
+const app = require("./app");
+const logger = require("./services/logger");
 
-const PORT = process.env.PORT || 3000
+require("./workers/deliveryWorker");
 
-app.listen(PORT,()=>{
-    console.log(`server running on http://localhost:${PORT}`)
-})
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  logger.info(` Server running on http://localhost:${PORT}`);
+  logger.info(` Delivery worker running`);
+});
