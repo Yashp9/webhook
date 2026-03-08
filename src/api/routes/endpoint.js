@@ -2,9 +2,7 @@ const express = require("express");
 const { body, param, validationResult } = require("express-validator");
 const pool = require("../../db/pool");
 const { generateSecret } = require("../../services/signature");
-const { route, routes } = require("../../app");
 const logger = require("../../services/logger");
-const { error } = require("console");
 
 const router = express.Router();
 
@@ -28,7 +26,10 @@ function validate(req, res, next) {
 router.post(
   "/",
   body("name").trim().notEmpty().withMessage("Name is required"),
-  body("url").isURL().withMessage("Valid URL is required"),
+  body("url").isURL({
+    require_tld: false,       // allows localhost (no .com needed)
+    require_protocol: true,   // must start with http:// or https://
+  }).withMessage("Valid URL is required"),
   body("event_types")
     .isArray({ min: 1 })
     .withMessage("At least one event type required"),
@@ -97,7 +98,7 @@ router.get("/", async (req, res) => {
             ORDER BY e.created_at DESC
             `,
     );
-    res.json({ endpoint: result.rows });
+    res.json({ endpoints: result.rows });
   } catch (error) {
     logger.error("Failed to list endpoints", { error: error.message });
     res.status(500).json({ error: "Failed to fetch endpoints" });
@@ -147,7 +148,10 @@ router.patch(
   "/:id",
   param("id").isUUID().withMessage("Invalid endpoint ID"),
   body("name").optional().trim().notEmpty(),
-  body("url").optional().isURL(),
+  body("url").optional().isURL({
+    require_tld: false,       // allows localhost (no .com needed)
+    require_protocol: true,   // must start with http:// or https://
+  }),
   body("event_types").optional().isArray({ min: 1 }),
   body("is_active").optional().isBoolean(),
   body("description").optional().trim(),

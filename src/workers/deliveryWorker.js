@@ -5,9 +5,7 @@ const pool = require("../db/pool");
 const { generateSignature } = require("../services/signature");
 const logger = require("../services/logger");
 const { connection } = require("./queue");
-const { type } = require("os");
-const { timeStamp, error } = require("console");
-const { start } = require("repl");
+const { updateEndpointHealth } = require("../services/health");
 
 const MAX_ATTEMPTS = parseInt(process.env.MAX_RETRY_ATTEMPTS) || 5;
 const BASE_DELAY_MS = parseInt(process.env.BASE_RETRY_DELAY_MS) || 10000;
@@ -212,6 +210,7 @@ const worker = new Worker(
         }
       }
     } finally {
+        await updateEndpointHealth(endpointId)
         client.release();
     }
   },
