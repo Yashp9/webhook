@@ -3,6 +3,7 @@ const { body, validationResult } = require("express-validator");
 const pool = require("../../db/pool");
 const logger = require("../../services/logger");
 const { route } = require("./endpoint");
+const { deliveryQueue } = require("../../workers/queue");
 
 const router = express.Router();
 
@@ -80,12 +81,26 @@ router.post(
         const deliveryId = deliveryResult.rows[0].id;
         deliveryIds.push(deliveryId);
 
-        logger.info("STUB would enque delivery job", {
-          deliveryId,
-          endpointId: endpoint.id,
-          endpointName: endpoint.name,
-          endpointUrl: endpoint.url,
-        });
+        // logger.info("STUB would enque delivery job", {
+        //   deliveryId,
+        //   endpointId: endpoint.id,
+        //   endpointName: endpoint.name,
+        //   endpointUrl: endpoint.url,
+        // });
+
+        await deliveryQueue.add(
+            'deliver', //job name
+            {                                 //job data - worker receives this
+                deliveryId,
+                endpointId:endpoint.id,
+                eventId:event.id
+            },
+            {jobId:`delivery-${deliveryId}`} //unique job ID prevent duplicates
+        )
+        logger.info('Job pushed to queue',{
+            deliveryId,
+            endpointName:endpoint.name
+        })
       }
 
       await client.query("COMMIT");
