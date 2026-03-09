@@ -1,108 +1,106 @@
-const pool = require("../db/pool");
-const logger = require("./logger");
+const pool = require('../db/pool')
+const logger = require('./logger')
 
 async function updateEndpointHealth(endpointId) {
-  const client = await pool.connect();
+  const client = await pool.connect()
+
   try {
-    //STEP 1: Fetch last 10 completed deliveries
+    // Get last 10 completed deliveries for this endpoint
     const result = await client.query(
       `SELECT status FROM deliveries
-             WHERE endpoint_id = $1
-               AND status IN ('success','failed','permanently_failed')
-             ORDER BY created_at DESC
-             LIMIT 10
-            `,
-      [endpointId],
-    );
+       WHERE endpoint_id = $1
+         AND status IN ('success', 'failed', 'permanently_failed')
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [endpointId]
+    )
 
-    const deliveries = result.rows;
-    //STEP 2: Handle edge case — no deliveries exist yet
+    const deliveries = result.rows
+
+    // No deliveries yet — mark as unknown
     if (deliveries.length === 0) {
       await client.query(
-        `UPDATE endpoint_health
-             SET health_status = 'unknown',
-                 last_checked_at = NOW()
-             WHERE endpoint_id = $1`,
-        [endpointId],
-      );
-      return "unknown";
+        `INSERT INTO endpoint_health (endpoint_id, health_status, last_checked_at)
+         VALUES ($1, 'unknown', NOW())
+         ON CONFLICT (endpoint_id) DO UPDATE SET
+           health_status   = 'unknown',
+           last_checked_at = NOW()`,
+        [endpointId]
+      )
+      return 'unknown'
     }
 
-    //STEP 3: Calculate success rate
+    // Calculate success rate from last 10
+    const successCount = deliveries.filter(d => d.status === 'success').length
+    const successRate  = (successCount / deliveries.length) * 100
 
-    const successCount = deliveries.filter(
-      (d) => d.status === "success",
-    ).length;
+    // Determine health status
+    let healthStatus
+    if      (successRate >= 80) healthStatus = 'healthy'
+    else if (successRate >= 40) healthStatus = 'degraded'
+    else                        healthStatus = 'failing'
 
-    //convert to percentage
-    const successRate = (successCount / deliveries.length) * 100;
-
-    //STEP 4: Determine endpoint health classification
-    let healthStatus;
-    if (successRate >= 80) healthStatus = "healthy";
-    else if (successRate >= 40) healthStatus = "degraded";
-    else healthStatus = "failing";
-
-    //STEP 5: Fetch ALL-TIME delivery metrics
-
+    // Get all-time totals
     const totals = await client.query(
-      `
-            SELECT 
-              COUNT(*) as total,
-              COUNT(*) FILTER (WHERE status = 'success')
-               as successful,
-              COUNT (*) FILTER (WHERE status IN ('failed','permanently_failed')) as failed,
-              MAX(created_at) as last_delivery
-            FROM deliveries
-            WHERE endpoint_id = $1
-            `,
-      [endpointId],
-    );
+      `SELECT
+         COUNT(*)                                                    AS total,
+         COUNT(*) FILTER (WHERE status = 'success')                 AS successful,
+         COUNT(*) FILTER (WHERE status IN ('failed','permanently_failed')) AS failed,
+         MAX(created_at)                                             AS last_delivery
+       FROM deliveries
+       WHERE endpoint_id = $1`,
+      [endpointId]
+    )
 
-    const { total, successful, failed, last_delivery } = totals.rows[0];
+    const { total, successful, failed, last_delivery } = totals.rows[0]
 
-    // STEP 6: Update endpoint_health table
-
+    // UPSERT — works whether row exists or not
     await client.query(
-      `UPDATE endpoint_health
-       SET health_status         = $1,
-           success_rate          = $2,
-           total_deliveries      = $3,
-           successful_deliveries = $4,
-           failed_deliveries     = $5,
-           last_checked_at       = NOW(),
-           last_delivery_at      = $6
-       WHERE endpoint_id = $7`,
+      `INSERT INTO endpoint_health (
+         endpoint_id,
+         health_status,
+         success_rate,
+         total_deliveries,
+         successful_deliveries,
+         failed_deliveries,
+         last_checked_at,
+         last_delivery_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
+       ON CONFLICT (endpoint_id) DO UPDATE SET
+         health_status         = EXCLUDED.health_status,
+         success_rate          = EXCLUDED.success_rate,
+         total_deliveries      = EXCLUDED.total_deliveries,
+         successful_deliveries = EXCLUDED.successful_deliveries,
+         failed_deliveries     = EXCLUDED.failed_deliveries,
+         last_checked_at       = NOW(),
+         last_delivery_at      = EXCLUDED.last_delivery_at`,
       [
+        endpointId,
         healthStatus,
-
-        // Round to 1 decimal for cleaner metrics display
         parseFloat(successRate.toFixed(1)),
-
         total,
         successful,
         failed,
         last_delivery,
-        endpointId,
-      ],
-    );
+      ]
+    )
 
-    logger.info("Health updated", {
+    logger.info('Health updated', {
       endpointId,
       healthStatus,
       successRate: `${successRate.toFixed(1)}%`,
-    });
+    })
 
-    return healthStatus;
+    return healthStatus
+
   } catch (err) {
-    logger.error("Failed to update health", {
+    logger.error('Failed to update health', {
       endpointId,
       error: err.message,
-    });
+    })
   } finally {
-    client.release();
+    client.release()
   }
 }
 
-// Export function so workers and services can call it
-module.exports = { updateEndpointHealth };
+module.exports = { updateEndpointHealth }
