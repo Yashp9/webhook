@@ -213,7 +213,7 @@ export default function Dashboard() {
                     <button
                       type="button"
                       className="btn-secondary btn-sm"
-                      onClick={() => setLogsFor(ep)}
+                      onClick={() => ep && setLogsFor(ep)}
                     >
                       View Logs
                     </button>
@@ -251,7 +251,7 @@ export default function Dashboard() {
 
       {logsFor && (
         <LogsModal
-          endpoints={logsFor}
+          endpoint={logsFor}
           onClose={() => setLogsFor(null)}
         />
       )}

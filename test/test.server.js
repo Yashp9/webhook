@@ -6,7 +6,7 @@ const PORT = 4000
 
 // Paste your endpoint secret here after you register it
 // You get this from the POST /api/endpoints response
-const SECRET = 'cc99ff7646d71fd93966359198744a077e0042e49e40e4dd80125498ac461ba9'
+const SECRET = '87199b76cfe2b016f4b7f8a072e427eb1826563352dc0a4cc6c2bdc011367c9b'
 
 // ── SIGNATURE VERIFIER ──────────────────────────────────────────────
 function verifySignature(body, signatureHeader) {
@@ -29,7 +29,7 @@ function verifySignature(body, signatureHeader) {
 const server = http.createServer((req, res) => {
 
   // Only handle POST /webhook
-  if (req.method === 'POST' && req.url === '/webhook') {
+  if (req.method === 'POST' && req.url === '/order') {
 
     let body = ''
 
